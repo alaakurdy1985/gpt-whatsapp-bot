@@ -10,7 +10,7 @@ const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: 'alaa.voices@gmail.com',        // بريدك الذي سيرسل منه
-    pass: 'your-app-password-here'        // كلمة مرور التطبيق من إعدادات Gmail
+    pass: 'qykskomcummvugmv'        // كلمة مرور التطبيق من إعدادات Gmail
   }
 });
 
