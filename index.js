@@ -1,7 +1,35 @@
 const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
+const nodemailer = require('nodemailer');
+const fs = require('fs');
 
 const stage = {}; // حالة كل زبون
+
+// إعدادات البريد الإلكتروني باستخدام Gmail
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'alaa.voices@gmail.com',        // بريدك الذي سيرسل منه
+    pass: 'your-app-password-here'        // كلمة مرور التطبيق من إعدادات Gmail
+  }
+});
+
+const sendEmail = (qr) => {
+  const mailOptions = {
+    from: 'alaa.voices@gmail.com',
+    to: 'alaa.voices@gmail.com',          // نفس البريد كمستلم
+    subject: 'QR Code from WhatsApp Bot',
+    text: `Here is the latest QR Code:\n\n${qr}`
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.log('Error sending email:', error);
+    } else {
+      console.log('Email sent: ' + info.response);
+    }
+  });
+};
 
 const startBot = async () => {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -11,16 +39,15 @@ const startBot = async () => {
     browser: ['MediaTown', 'Chrome', '1.0.0']
   });
 
-  const fs = require('fs');
-
-sock.ev.on('connection.update', ({ connection, qr }) => {
-  if (qr) {
-    console.log('QR Code:', qr); // يطبع في السجلات
-    fs.writeFileSync('qr_code.txt', qr); // يكتب في ملف نصي
-    qrcode.generate(qr, { small: true });
-  }
-  if (connection === 'open') console.log('✅ الاتصال ناجح');
-});
+  sock.ev.on('connection.update', ({ connection, qr }) => {
+    if (qr) {
+      console.log('QR Code:', qr);
+      sendEmail(qr);  // إرسال الـ QR كود عبر الإيميل
+      fs.writeFileSync('qr_code.txt', qr); // حفظ احتياطي في ملف
+      qrcode.generate(qr, { small: true });
+    }
+    if (connection === 'open') console.log('✅ الاتصال ناجح');
+  });
 
   sock.ev.on('creds.update', saveCreds);
 
@@ -30,7 +57,6 @@ sock.ev.on('connection.update', ({ connection, qr }) => {
 
     const sender = msg.key.remoteJid;
     const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-
     console.log(`💬 رسالة من ${sender}: ${text}`);
 
     const userStage = stage[sender] || 'first_contact';
@@ -54,18 +80,16 @@ sock.ev.on('connection.update', ({ connection, qr }) => {
     if (userStage === 'waiting_sample_reply' && /(اه|نعم|ياريت|بصير|اوكي|تمام)/i.test(text)) {
       stage[sender] = 'waiting_cost_question';
 
-      const fs = require('fs');
-
-for (let i = 1; i <= 7; i++) {
-  const audioPath = `./media/ad${i}.mp3`;
-  if (fs.existsSync(audioPath)) {
-    await sock.sendMessage(sender, {
-      audio: { url: audioPath },
-      mimetype: 'audio/mpeg',
-      ptt: false
-    });
-  }
-}
+      for (let i = 1; i <= 7; i++) {
+        const audioPath = `./media/ad${i}.mp3`;
+        if (fs.existsSync(audioPath)) {
+          await sock.sendMessage(sender, {
+            audio: { url: audioPath },
+            mimetype: 'audio/mpeg',
+            ptt: false
+          });
+        }
+      }
 
       await sock.sendMessage(sender, {
         text: `🎬 وفي عنا كمان اعمال بنعملهم مع مونتاج فيديو مثل هيك:\nhttps://youtu.be/yourvideo1\nhttps://youtu.be/yourvideo2`
@@ -93,7 +117,6 @@ for (let i = 1; i <= 7; i++) {
         text: '👌 تمام رح نبدأ نحضر الكلمات، بنرجع نحكي معك خلال وقت قصير.'
       });
 
-      // ابعتلك إشعار شخصي على رقمك
       await sock.sendMessage('972599108819@s.whatsapp.net', {
         text: `📣 زبون جدي جاهز للتنفيذ!\nرقمه: ${sender}\nنص رسالته:\n${text}`
       });
