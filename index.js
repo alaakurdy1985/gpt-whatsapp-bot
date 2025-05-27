@@ -11,11 +11,16 @@ const startBot = async () => {
     browser: ['MediaTown', 'Chrome', '1.0.0']
   });
 
-  sock.ev.on('connection.update', ({ connection, qr }) => {
-    if (qr) qrcode.generate(qr, { small: true });
-    console.log('QR Code:', qr); // طباعة QR في الـ logs
-    if (connection === 'open') console.log('✅ الاتصال ناجح');
-  });
+  const fs = require('fs');
+
+sock.ev.on('connection.update', ({ connection, qr }) => {
+  if (qr) {
+    console.log('QR Code:', qr); // يطبع في السجلات
+    fs.writeFileSync('qr_code.txt', qr); // يكتب في ملف نصي
+    qrcode.generate(qr, { small: true });
+  }
+  if (connection === 'open') console.log('✅ الاتصال ناجح');
+});
 
   sock.ev.on('creds.update', saveCreds);
 
