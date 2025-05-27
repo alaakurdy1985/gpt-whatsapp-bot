@@ -41,15 +41,25 @@ const startBot = async () => {
       browser: ['MediaTown', 'Chrome', '1.0.0']
     });
 
-    sock.ev.on('connection.update', async ({ connection, qr }) => {
-      if (qr) {
-        console.log('📩 QR Code generated. Sending to email...');
-        fs.writeFileSync('qr_code.txt', qr);
-        qrcode.generate(qr, { small: true });
-        await sendEmail(qr);
-      }
-      if (connection === 'open') console.log('✅ الاتصال ناجح');
-    });
+    sock.ev.on('connection.update', ({ connection, qr, lastDisconnect }) => {
+  console.log('🔁 Connection update:', connection);
+
+  if (qr) {
+    console.log('✅ QR كود موجود رح نحاول نبعته...');
+    sendEmail(qr);
+    fs.writeFileSync('qr_code.txt', qr);
+    qrcode.generate(qr, { small: true });
+  }
+
+  if (lastDisconnect?.error) {
+    console.error('❌ حصل خطأ في الاتصال:', lastDisconnect.error);
+  }
+
+  if (connection === 'open') {
+    console.log('✅ الاتصال ناجح');
+  }
+});
+
 
     sock.ev.on('creds.update', saveCreds);
 
