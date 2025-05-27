@@ -1,3 +1,5 @@
+// ملف سكربت محسّن لتشغيل بوت واتساب مع إرسال QR للإيميل ومعالجة الأخطاء
+
 const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const nodemailer = require('nodemailer');
@@ -5,132 +7,135 @@ const fs = require('fs');
 
 const stage = {}; // حالة كل زبون
 
-// إعدادات البريد الإلكتروني باستخدام Gmail
+// إعداد البريد
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'alaa.voices@gmail.com',        // بريدك الذي سيرسل منه
-    pass: 'qykskomcummvugmv'        // كلمة مرور التطبيق من إعدادات Gmail
+    user: 'alaa.voices@gmail.com',
+    pass: 'qykskomcummvugmv'
   }
 });
 
-const sendEmail = (qr) => {
-  const mailOptions = {
-    from: 'alaa.voices@gmail.com',
-    to: 'alaa.voices@gmail.com',          // نفس البريد كمستلم
-    subject: 'QR Code from WhatsApp Bot',
-    text: `Here is the latest QR Code:\n\n${qr}`
-  };
+const sendEmail = async (qr) => {
+  try {
+    const mailOptions = {
+      from: 'alaa.voices@gmail.com',
+      to: 'alaa.voices@gmail.com',
+      subject: 'QR Code from WhatsApp Bot',
+      text: `Here is the latest QR Code:\n\n${qr}`
+    };
 
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.log('Error sending email:', error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent:', info.response);
+  } catch (error) {
+    console.error('❌ Error sending email:', error);
+  }
 };
 
 const startBot = async () => {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
 
-  const sock = makeWASocket({
-    auth: state,
-    browser: ['MediaTown', 'Chrome', '1.0.0']
-  });
+    const sock = makeWASocket({
+      auth: state,
+      browser: ['MediaTown', 'Chrome', '1.0.0']
+    });
 
-  sock.ev.on('connection.update', ({ connection, qr }) => {
-    if (qr) {
-      console.log('QR Code:', qr);
-      sendEmail(qr);  // إرسال الـ QR كود عبر الإيميل
-      fs.writeFileSync('qr_code.txt', qr); // حفظ احتياطي في ملف
-      qrcode.generate(qr, { small: true });
-    }
-    if (connection === 'open') console.log('✅ الاتصال ناجح');
-  });
+    sock.ev.on('connection.update', async ({ connection, qr }) => {
+      if (qr) {
+        console.log('📩 QR Code generated. Sending to email...');
+        fs.writeFileSync('qr_code.txt', qr);
+        qrcode.generate(qr, { small: true });
+        await sendEmail(qr);
+      }
+      if (connection === 'open') console.log('✅ الاتصال ناجح');
+    });
 
-  sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message) return;
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+      const msg = messages[0];
+      if (!msg.message) return;
 
-    const sender = msg.key.remoteJid;
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-    console.log(`💬 رسالة من ${sender}: ${text}`);
+      const sender = msg.key.remoteJid;
+      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+      console.log(`💬 رسالة من ${sender}: ${text}`);
 
-    const userStage = stage[sender] || 'first_contact';
+      const userStage = stage[sender] || 'first_contact';
 
-    if (userStage === 'first_contact') {
-      stage[sender] = 'waiting_yes';
-      await sock.sendMessage(sender, {
-        text: 'اهلا وسهلا يسعد اوقاتك ، حابب تعمل اغنية لمشروعك؟'
-      });
-      return;
-    }
-
-    if (userStage === 'waiting_yes' && /(اه|نعم|اكي|تمام|بدي|حاب)/i.test(text)) {
-      stage[sender] = 'waiting_sample_reply';
-      await sock.sendMessage(sender, {
-        text: 'خيار ممتاز انك تعمل اعلان مغنى لان الاغنية افضل وسيلة اعلانية بتعلق في راس الناس وممكن تعمل ترند وتنقل المشروع لمكان ممتاز انشاء الله، بتحب تسمع اشي من اعمالنا لزباين سابقين؟'
-      });
-      return;
-    }
-
-    if (userStage === 'waiting_sample_reply' && /(اه|نعم|ياريت|بصير|اوكي|تمام)/i.test(text)) {
-      stage[sender] = 'waiting_cost_question';
-
-      for (let i = 1; i <= 7; i++) {
-        const audioPath = `./media/ad${i}.mp3`;
-        if (fs.existsSync(audioPath)) {
-          await sock.sendMessage(sender, {
-            audio: { url: audioPath },
-            mimetype: 'audio/mpeg',
-            ptt: false
-          });
-        }
+      if (userStage === 'first_contact') {
+        stage[sender] = 'waiting_yes';
+        await sock.sendMessage(sender, {
+          text: 'اهلا وسهلا يسعد اوقاتك ، حابب تعمل اغنية لمشروعك؟'
+        });
+        return;
       }
 
-      await sock.sendMessage(sender, {
-        text: `🎬 وفي عنا كمان اعمال بنعملهم مع مونتاج فيديو مثل هيك:\nhttps://youtu.be/yourvideo1\nhttps://youtu.be/yourvideo2`
-      });
+      if (userStage === 'waiting_yes' && /(اه|نعم|اكي|تمام|بدي|حاب)/i.test(text)) {
+        stage[sender] = 'waiting_sample_reply';
+        await sock.sendMessage(sender, {
+          text: 'خيار ممتاز انك تعمل اعلان مغنى لان الاغنية افضل وسيلة اعلانية بتعلق في راس الناس وممكن تعمل ترند وتنقل المشروع لمكان ممتاز انشاء الله، بتحب تسمع اشي من اعمالنا لزباين سابقين؟'
+        });
+        return;
+      }
 
-      await sock.sendMessage(sender, {
-        text: 'كل مشروع بنعمله كلمات والحان بستايل مختلف حسب ذوق الزبون ومتطلبات ونوع المشروع، عشان حقوق الملكية كمان.'
-      });
+      if (userStage === 'waiting_sample_reply' && /(اه|نعم|ياريت|بصير|اوكي|تمام)/i.test(text)) {
+        stage[sender] = 'waiting_cost_question';
 
-      return;
-    }
+        for (let i = 1; i <= 7; i++) {
+          const audioPath = `./media/ad${i}.mp3`;
+          if (fs.existsSync(audioPath)) {
+            await sock.sendMessage(sender, {
+              audio: { url: audioPath },
+              mimetype: 'audio/mpeg',
+              ptt: false
+            });
+          }
+        }
 
-    if (userStage === 'waiting_cost_question' && /(كم|التكلفة|سعر|بكلف|بقديش)/i.test(text)) {
-      stage[sender] = 'waiting_project_info';
-      await sock.sendMessage(sender, {
-        text: `عنا طريقتين للإنتاج:\n\n🎼 1. احترافية (300 دينار): بيشارك فيها 8-10 اشخاص من ملحنين، كُتّاب، موزعين، مغنيين، مهندسين، وستوديو.\n\n🤖 2. مع الذكاء الاصطناعي (150 دينار): الكلمات من فريقنا، الغناء من مغنيينا، لكن اللحن من الذكاء الاصطناعي (ما بنقدر نتحكم فيه مثل الاحترافي).`
-      });
-      return;
-    }
+        await sock.sendMessage(sender, {
+          text: `🎬 وفي عنا كمان اعمال بنعملهم مع مونتاج فيديو مثل هيك:\nhttps://youtu.be/yourvideo1\nhttps://youtu.be/yourvideo2`
+        });
 
-    if (userStage === 'waiting_project_info' && text.length > 20) {
-      stage[sender] = 'done';
+        await sock.sendMessage(sender, {
+          text: 'كل مشروع بنعمله كلمات والحان بستايل مختلف حسب ذوق الزبون ومتطلبات ونوع المشروع، عشان حقوق الملكية كمان.'
+        });
 
-      await sock.sendMessage(sender, {
-        text: '👌 تمام رح نبدأ نحضر الكلمات، بنرجع نحكي معك خلال وقت قصير.'
-      });
+        return;
+      }
 
-      await sock.sendMessage('972599108819@s.whatsapp.net', {
-        text: `📣 زبون جدي جاهز للتنفيذ!\nرقمه: ${sender}\nنص رسالته:\n${text}`
-      });
+      if (userStage === 'waiting_cost_question' && /(كم|التكلفة|سعر|بكلف|بقديش)/i.test(text)) {
+        stage[sender] = 'waiting_project_info';
+        await sock.sendMessage(sender, {
+          text: `عنا طريقتين للإنتاج:\n\n🎼 1. احترافية (300 دينار): بيشارك فيها 8-10 اشخاص من ملحنين، كُتّاب، موزعين، مغنيين، مهندسين، وستوديو.\n\n🤖 2. مع الذكاء الاصطناعي (150 دينار): الكلمات من فريقنا، الغناء من مغنيينا، لكن اللحن من الذكاء الاصطناعي (ما بنقدر نتحكم فيه مثل الاحترافي).`
+        });
+        return;
+      }
 
-      return;
-    }
+      if (userStage === 'waiting_project_info' && text.length > 20) {
+        stage[sender] = 'done';
 
-    if (!stage[sender] || stage[sender] === 'done') {
-      stage[sender] = 'first_contact';
-      await sock.sendMessage(sender, {
-        text: 'اهلا وسهلا يسعد اوقاتك ، حابب تعمل اغنية لمشروعك؟'
-      });
-    }
-  });
+        await sock.sendMessage(sender, {
+          text: '👌 تمام رح نبدأ نحضر الكلمات، بنرجع نحكي معك خلال وقت قصير.'
+        });
+
+        await sock.sendMessage('972599108819@s.whatsapp.net', {
+          text: `📣 زبون جدي جاهز للتنفيذ!\nرقمه: ${sender}\nنص رسالته:\n${text}`
+        });
+
+        return;
+      }
+
+      if (!stage[sender] || stage[sender] === 'done') {
+        stage[sender] = 'first_contact';
+        await sock.sendMessage(sender, {
+          text: 'اهلا وسهلا يسعد اوقاتك ، حابب تعمل اغنية لمشروعك؟'
+        });
+      }
+    });
+  } catch (err) {
+    console.error('❌ فشل البوت:', err);
+  }
 };
 
 startBot();
