@@ -13,6 +13,7 @@ const startBot = async () => {
 
   sock.ev.on('connection.update', ({ connection, qr }) => {
     if (qr) qrcode.generate(qr, { small: true });
+    console.log('QR Code:', qr); // طباعة QR في الـ logs
     if (connection === 'open') console.log('✅ الاتصال ناجح');
   });
 
